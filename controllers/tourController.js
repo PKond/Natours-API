@@ -1,6 +1,9 @@
 const Tour = require('./../models/tourModel');
 const APIFeatures = require('./../utils/apiFeatures');
 const catchAsync = require('./../utils/catchAsync');
+const AppError = require('./../utils/AppError');
+const mongoose = require('mongoose');
+
 
 exports.aliasTopTours = (req, res, next) => {
   req.query.limit = '5';
@@ -28,16 +31,21 @@ exports.getAllTours = catchAsync(async (req, res, next) => {
     });
 });
 
-exports.getTour = catchAsync(async (req, res, next) => {
-    const tour = await Tour.findById(req.params.id);
-    // Tour.findOne({ _id: req.params.id })
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        tour
-      }
-    });
+exports.getTour = catchAsync(async (req,res,next) => {
+ 
+  const isValidObjectId = mongoose.Types.ObjectId.isValid(req.params.id);
+ 
+  if(!isValidObjectId) return next(new AppError(`The tour is not found with the id.`,404));
+ 
+  const tour = await Tour.findById(req.params.id);
+ 
+  res.status(200).json({
+    status:'success',
+    data:{
+      tour
+    }
+  });
+ 
 });
 
 exports.createTour = catchAsync(async (req, res, next) => {
@@ -52,6 +60,12 @@ exports.createTour = catchAsync(async (req, res, next) => {
 });
 
 exports.updateTour = catchAsync(async (req, res, next) => {
+	console.log(req.params);
+	const isValidObjectId = mongoose.Types.ObjectId.isValid(req.params.id);
+	console.log(isValidObjectId);
+ 
+	if(!isValidObjectId) return next(new AppError(`The tour is not found with the id.`,404));
+
     const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -66,7 +80,11 @@ exports.updateTour = catchAsync(async (req, res, next) => {
 });
 
 exports.deleteTour = catchAsync(async (req, res, next) => {
-    await Tour.findByIdAndDelete(req.params.id);
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(req.params.id);
+ 
+	if(!isValidObjectId) return next(new AppError(`The tour is not found with the id.`,404));
+
+	const tour = await Tour.findByIdAndDelete(req.params.id);
 
     res.status(204).json({
       status: 'success',
