@@ -1,72 +1,85 @@
-const AppError = require("./../utils/AppError");
+const AppError = require('./../utils/AppError');
 
 const handleCastErrorDB = err => {
-	const message = `Invalid ${err.path}: ${err.value}.`
-	return new AppError(message, 400);
-}
+  const message = `Invalid ${err.path}: ${err.value}.`;
+  return new AppError(message, 400);
+};
 
 const handleDuplicateFieldsDB = err => {
-	const value = err.errmsg.match(/(?<!<p>[^>]*)(?:\$?\d{1,3}(?:,\d{3})*(?:\.\d+)?\%?)/g)[0];
-	console.log(value);
+  const value = err.errmsg.match(
+    /(?<!<p>[^>]*)(?:\$?\d{1,3}(?:,\d{3})*(?:\.\d+)?\%?)/g
+  )[0];
+  console.log(value);
 
-	const message = `Duplicate field value: ${value}. Please use another value!`
-	return new AppError(message, 400);
-}
+  const message = `Duplicate field value: ${value}. Please use another value!`;
+  return new AppError(message, 400);
+};
 
 const handleValidationErrorDB = err => {
-	console.log(err);
-	const errors = Object.values(err.errors).map(el => el.message);
-	const message = `Invalid input data. ${errors.join('. ')}`;
-	return new AppError(message, 400);
-}
+  console.log(err);
+  const errors = Object.values(err.errors).map(el => el.message);
+  const message = `Invalid input data. ${errors.join('. ')}`;
+  return new AppError(message, 400);
+};
+
+const handleJWTError = () => {
+  return new AppError('Invalid token. Please log in again!', 401);
+};
+
+const handleJWTExpiredError = () =>
+  new AppError('Your token has expired! Please log in again.', 401);
 
 const sendErrorDev = (err, res) => {
-	res.status(err.statusCode).json({
-		status: err.status,
-		error: err,
-		message: err.message,
-		stack: err.stack
-	});
-}
+  res.status(err.statusCode).json({
+    status: err.status,
+    error: err,
+    message: err.message,
+    stack: err.stack
+  });
+};
 
 const sendErrorProd = (err, res) => {
-	// Operational, trusted error: send message to client
-	if(err.isOperational) {
-		res.status(err.statusCode).json({
-			status: err.status,
-			message: err.message,
-		})
-	} 
-	// Programming or other unknown error: do not leak error details
-	else {
-		// 1) Log error
-		console.error('💥💥💥 ERROR 💥💥💥', err);
+  // Operational, trusted error: send message to client
+  if (err.isOperational) {
+    res.status(err.statusCode).json({
+      status: err.status,
+      message: err.message
+    });
+  }
+  // Programming or other unknown error: do not leak error details
+  else {
+    // 1) Log error
+    console.error('💥💥💥 ERROR 💥💥💥', err);
 
-		// 2) Send Generic Message
-		res.status(500).json({
-			status: 'error',
-			message: 'Something went very wrong!'
-		});
-	}
-}
-
+    // 2) Send Generic Message
+    res.status(500).json({
+      status: 'error',
+      message: 'Something went very wrong!'
+    });
+  }
+};
 
 module.exports = (err, req, res, next) => {
-	//console.log(err.stack);
+  // Set default error values if not present
+  err.statusCode = err.statusCode || 500;
+  err.status = err.status || 'error';
 
-	err.statusCode = err.statusCode || 500;
-	err.status = err.status || 'error';
+  if (process.env.NODE_ENV === 'development') {
+    // Send detailed error in development
+    sendErrorDev(err, res);
+  } else if (process.env.NODE_ENV === 'production') {
+    // Shallow copy the error object to avoid mutating the original
+    let error = { ...err };
 
-	if(process.env.NODE_ENV === 'development') {
-		sendErrorDev(err, res);
-	} else if (process.env.NODE_ENV === 'production') {
-		let error = JSON.parse(JSON.stringify(err));
+    // Custom error handlers for specific error types
+    if (error.name === 'CastError') error = handleCastErrorDB(error);
+    if (error.code === 11000) error = handleDuplicateFieldsDB(error);
+    if (error.name === 'ValidationError')
+      error = handleValidationErrorDB(error);
+    if (error.name === 'JsonWebTokenError') error = handleJWTError();
+    if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
-
-		if(error.name === 'CastError') error = handleCastErrorDB(error);
-		if(error.code === 11000) error = handleDuplicateFieldsDB(error);
-		if(error.name === 'ValidationError') error = handleValidationErrorDB(error);
-
-		sendErrorProd(error, res);
-	}
+    // Send the error in production
+    sendErrorProd(error, res);
+  }
 };
